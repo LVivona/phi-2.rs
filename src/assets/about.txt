@@ -1,0 +1,10 @@
+ _____  _     _            ___
+|  __ \| |   (_)          |__ \
+| |__) | |__  _   ______     ) |
+|  ___/| '_ \| | |______|   / /
+| |    | | | | |           / /_
+|_|    |_| |_|_|          |____|
+
+2.7 billion-parameter language model that demonstrates outstanding reasoning
+and language understanding capabilities, showcasing state-of-the-art performance
+among base language models with less than 13 billion parameters.
