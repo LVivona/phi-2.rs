@@ -1,37 +1,53 @@
-use std::{ops::{Index}, slice::SliceIndex};
-
+use rand::prelude::*;
+use rand::distributions::{Uniform, Distribution};
+use std::{ops::Index, usize};
 use serde::{Deserialize, Serialize};
+
 
 #[path="../tensor.rs"]
 mod tensor;
-
+use crate::tensor::Tensor;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Embedding<T> {
-    num_embeddings : i32, 
-    embedding_dim : i32,
-    pub weight : tensor::Tensor<T>
+    num_embeddings : usize, 
+    embedding_dim : usize,
+    pub weight : Tensor<T>
 }
 
-impl<T> Embedding<T> {
 
-    pub (crate)fn new(num_embeddings : i32, embedding_dim : i32) -> Self
-        where T : Clone
+impl<T> Embedding<T> 
+    where
+    T: Distribution<T> + Copy
+{
+
+    pub (crate)fn new(num_embeddings : usize, embedding_dim : usize) -> Self
     {
-        assert!(num_embeddings > 0, "ValueError: num_embeddings must be larger then 0, try a i32 larger then 0.");
-        assert!(embedding_dim > 0, "ValueError: embedding_dim must be larger then 0, try a i32 larger then 0.");
-        
+        assert!(
+            num_embeddings > 0, 
+            "ValueError: num_embeddings must be larger then 0, try a i32 larger then 0."
+        );
+        assert!(
+                embedding_dim > 0,
+                "ValueError: embedding_dim must be larger then 0, try a i32 larger then 0."
+            );
 
         Embedding {
             num_embeddings,
             embedding_dim,
-            weight : tensor::Tensor::<T>::with_capacity((num_embeddings * embedding_dim) as usize)
+            weight : Vec::with_capacity(embedding_dim * num_embeddings)
         }
     }
 
-    pub (crate)fn forward(&self, index : &[i32]) -> &[T] {
-        todo!("NotImplemented: soon will be implemented later")
+    pub (crate)fn forward(&self, x : &[usize]) -> Vec<&T>
+    {
+        x.iter().flat_map(|&idx| {
+            let start = idx * self.embedding_dim;
+            let end = start + self.embedding_dim;
+            &self.weight[start..end]
+        }).collect::<Vec<&T>>()
     }
+
 
     pub (crate)fn to_toml(&self) -> String
         where T : Serialize 
@@ -40,23 +56,24 @@ impl<T> Embedding<T> {
     }
 
 
-    
 }
 
-impl<T, I : SliceIndex<[T]>> Index<I> for Embedding<T> {
-    type Output = I::Output;
+impl<T> Index<usize> for Embedding<T> 
+{
+    type Output = [T];
 
-    fn index(&self, index: I) -> &Self::Output {
-        assert!(self.weight.len() > 0, "IndexError: Nothing has been allocated");
-        &self.weight[index]
+    #[inline]
+    fn index(&self, index: usize) -> &Self::Output {
+        let start = index * self.embedding_dim;
+        let end = start + self.embedding_dim;
+        &self.weight[start..end]
     }
 }
-
 
 #[cfg(test)]
 mod test {
     use super::Embedding;
-
+    use rand::prelude::*;
     #[test]
     fn test_embedding_new(){
         let embedding: Embedding<f32> = Embedding::new(10, 10);
@@ -70,7 +87,28 @@ mod test {
 
     #[test]
     fn test_index(){
-         let emb = Embedding::<f32>::new(10, 10);
-         println!("{}", emb[0]);
+         let mut emb = Embedding::<f32>::new(1, 1);
+         emb.weight.push(1.0);
+         assert_eq!([1.0], emb[0]);
+    }
+
+    #[test]
+    fn test_forward_pass(){
+         let mut emb = Embedding::<f32>::new(1, 1);
+         emb.weight.push(1.0);
+
+         assert_eq!(emb.forward(&[0, 0]).iter().map(|x| **x == 1.0).collect::<Vec<bool>>(), vec![true, true]);
+    }   
+
+    #[test]
+    fn random_test(){
+
+        let mut rng = thread_rng();
+        if rng.gen() { // random bool
+            let x: f64 = rng.gen(); // random number in range [0, 1)
+            let y = rng.gen_range(-10.0..10.0);
+            println!("x is: {}", x);
+            println!("y is: {}", y);
+        }
     }
 }
