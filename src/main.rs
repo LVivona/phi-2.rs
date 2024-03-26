@@ -39,7 +39,8 @@ mod tensor;
 
 
 fn main() ->  Result<(), ()>{
-    let mut x: Embedding<f32> = Embedding::new(1, 1);
+    // TODO: fix this to have asserts to check we don't go over space provided
+    let mut x: Embedding<f32> = Embedding::<f32>::new(3, 1);
     let mut _l: Linear<f32> = Linear::new(10, 10, false);
 
     x.weight.push(1.0);
