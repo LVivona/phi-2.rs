@@ -18,7 +18,7 @@ pub struct Embedding<T> {
 
 impl<T> Embedding<T> 
     where
-    T: Distribution<T> + Copy
+    T: Copy
 {
 
     pub (crate)fn new(num_embeddings : usize, embedding_dim : usize) -> Self
@@ -35,7 +35,7 @@ impl<T> Embedding<T>
         Embedding {
             num_embeddings,
             embedding_dim,
-            weight : Vec::with_capacity(embedding_dim * num_embeddings)
+            weight : Vec::<T>::with_capacity(embedding_dim * num_embeddings)
         }
     }
 
