@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use crate::nn::{embedding::Embedding, Linear};
+use crate::nn::{Embedding, Linear};
 
 mod config;
 mod tokeizer;
@@ -39,10 +39,13 @@ mod tensor;
 
 
 fn main() ->  Result<(), ()>{
-    let mut x: Embedding<f32> = nn::Embedding::new(1, 1);
-    let mut l: Linear<f32> = nn::Linear::new(10, 10, false);
+    let mut x: Embedding<f32> = Embedding::new(1, 1);
+    let mut _l: Linear<f32> = Linear::new(10, 10, false);
 
-    l.forward(x)
+    x.weight.push(1.0);
+    x.weight.push(2.0);
+    x.weight.push(3.0);
+    // println!("{:?}", &x[1]);
     println!("{}", x.to_toml());
     println!("Hello world welcome to Phi-2...");
     Ok(())
