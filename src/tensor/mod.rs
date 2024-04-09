@@ -5,6 +5,8 @@
 // pub type Tensor<T> = Vec<T>;
 
 // Expand On Tensor Operation
+use rand::distributions::{Distribution, Standard};
+use rand::Rng;
 use std::fmt::{Debug, Display};
 use std::marker::PhantomData;
 use std::ops::{Add, Div, Mul, Sub};
@@ -34,11 +36,54 @@ where
     }
 }
 
-impl<Dtype> Tensor<Dtype> {
-    fn new(row: usize, col: usize, vec: Vec<Dtype>) -> Self {
+impl<Dtype> Tensor<Dtype>
+where
+    Dtype: Clone + Debug + From<u8>,
+{
+    pub fn new(row: usize, col: usize, vec: Vec<Dtype>) -> Self {
+        assert_eq!(row * col, vec.len(), "Incorrect dimensions for tensor");
         Tensor {
             shape: (row, col),
             storage: vec,
+            _storage: PhantomData,
+        }
+    }
+
+    pub fn ones(row: usize, col: usize) -> Self {
+        let storage = vec![Dtype::from(1); row * col];
+        Tensor {
+            shape: (row, col),
+            storage,
+            _storage: PhantomData,
+        }
+    }
+
+    pub fn zeros(row: usize, col: usize) -> Self {
+        let storage = vec![Dtype::from(0); row * col];
+        Tensor {
+            shape: (row, col),
+            storage,
+            _storage: PhantomData,
+        }
+    }
+
+    pub fn rand_f32(row: usize, col: usize) -> Tensor<f32> {
+        let mut rng = rand::thread_rng();
+        let storage = (0..row * col).map(|_| rng.gen::<f32>()).collect();
+
+        Tensor {
+            shape: (row, col),
+            storage,
+            _storage: PhantomData,
+        }
+    }
+    pub fn rand_f64(row: usize, col: usize) -> Tensor<f64> {
+        let mut rng = rand::thread_rng();
+        let storage = (0..row * col).map(|_| rng.gen::<f64>()).collect();
+
+        Tensor {
+            shape: (row, col),
+            storage,
             _storage: PhantomData,
         }
     }
@@ -73,5 +118,10 @@ mod test {
         let tensor1 = vec1.to_tensor(2, 5);
         let tensor2 = Tensor::new(2, 5, vec2);
         assert_eq!(tensor1, tensor2);
+    }
+
+    fn rng_test() {
+        let _tensor: Tensor<f32> = Tensor::<f32>::rand_f32(10usize, 10usize);
+        println!("{:?}", _tensor);
     }
 }
