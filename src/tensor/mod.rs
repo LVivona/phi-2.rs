@@ -4,35 +4,96 @@
 // low level hardware
 // pub type Tensor<T> = Vec<T>;
 
-// Expand On Tensor Operation
+pub(crate) mod error;
+
+// rand == "0.8.5"
 use rand::distributions::{Distribution, Standard};
 use rand::Rng;
+
+// std library
 use std::fmt::{Debug, Display};
 use std::marker::PhantomData;
 use std::ops::{Add, Div, Mul, Sub};
 
+// tensor sub module(s)
+use error::TensorError;
+
+// simple tensor form with no batch
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Tensor<Dtype> {
-    shape: (usize, usize),
-    storage: Vec<Dtype>,
+    pub shape: (usize, usize),
+    pub storage: Vec<Dtype>,
     _storage: PhantomData<Dtype>,
+    #[cfg(feature = "retain_gradients")]
+    pub gradients: Option<Vec<Dtype>>,
 }
 
-trait TensorTrait<Dtype> {
-    fn to_tensor(self, row: usize, col: usize) -> Tensor<Dtype>;
+/// Implementation of the `IntoTensor` trait for vectors.
+///
+/// This implementation allows a vector of data to be converted into a tensor,
+/// given the desired shape (number of rows and columns). If the size of the vector
+/// does not match the specified shape, an error is returned.
+pub trait IntoTensor<Dtype> {
+    /// Converts a collection into a tensor with the specified shape.
+    ///
+    /// This method takes ownership of the collection and reorganizes its elements into a tensor
+    /// with the given number of rows and columns. The size of the collection must exactly match
+    /// the product of `row` and `col`, otherwise an error is returned.
+    ///
+    /// # Examples
+    ///
+    /// Basic usage:
+    ///
+    /// ```
+    /// # use your_crate::{Tensor, IntoTensor, TensorError};
+    /// let vec = vec![1, 2, 3, 4, 5, 6];
+    /// let tensor = vec.to_tensor(2, 3).unwrap();
+    /// assert_eq!(tensor.shape(), (2, 3));
+    /// assert_eq!(tensor.storage(), &[1, 2, 3, 4, 5, 6]);
+    /// ```
+    ///
+    /// Error case:
+    ///
+    /// ```
+    /// # use your_crate::{Tensor, IntoTensor, TensorError};
+    /// let vec = vec![1, 2, 3, 4, 5];
+    /// let result = vec.to_tensor(2, 3);
+    /// assert!(result.is_err());
+    /// assert_eq!(result.unwrap_err(), TensorError::InvalidShape { expected: (2, 3), found: (5, 1) });
+    /// ```
+    ///
+    /// # Parameters
+    ///
+    /// - `self`: The collection to be converted into a tensor.
+    /// - `row`: The number of rows for the resulting tensor.
+    /// - `col`: The number of columns for the resulting tensor.
+    ///
+    /// # Returns
+    ///
+    /// - `Ok(Tensor<Dtype>)`: A tensor with the specified shape, if the size of the collection matches the shape.
+    /// - `Err(TensorError)`: An error if the size of the collection does not match the specified shape.
+    fn to_tensor(self, row: usize, col: usize) -> Result<Tensor<Dtype>, TensorError>;
 }
 
-impl<Dtype> TensorTrait<Dtype> for Vec<Dtype>
+impl<Dtype> IntoTensor<Dtype> for Vec<Dtype>
 where
     Dtype: Debug,
 {
-    fn to_tensor(self, row: usize, col: usize) -> Tensor<Dtype> {
-        assert_eq!(self.len(), row * col, "Incorrect dimensions for tensor");
-        Tensor {
+    fn to_tensor(self, row: usize, col: usize) -> Result<Tensor<Dtype>, TensorError> {
+        if self.len() != row * col {
+            return Err(TensorError::InvalidShape {
+                expected: (row, col),
+                found: (self.len(), 1),
+            });
+        }
+
+        Ok(Tensor {
             shape: (row, col),
             storage: self,
             _storage: PhantomData,
-        }
+            #[cfg(feature = "retain_gradients")]
+            gradients: None,
+        })
     }
 }
 
@@ -40,53 +101,86 @@ impl<Dtype> Tensor<Dtype>
 where
     Dtype: Clone + Debug + From<u8>,
 {
-    pub fn new(row: usize, col: usize, vec: Vec<Dtype>) -> Self {
-        assert_eq!(row * col, vec.len(), "Incorrect dimensions for tensor");
-        Tensor {
-            shape: (row, col),
-            storage: vec,
-            _storage: PhantomData,
+    pub fn new(shape: (usize, usize), storage: Vec<Dtype>) -> Result<Self, TensorError> {
+        if storage.len() != shape.0 * shape.1 {
+            return Err(TensorError::InvalidShape {
+                expected: shape,
+                found: (storage.len(), 1),
+            });
         }
-    }
 
-    pub fn ones(row: usize, col: usize) -> Self {
-        let storage = vec![Dtype::from(1); row * col];
-        Tensor {
-            shape: (row, col),
+        Ok(Tensor {
+            shape,
             storage,
             _storage: PhantomData,
-        }
+            #[cfg(feature = "retain_gradients")]
+            gradients: None,
+        })
     }
 
-    pub fn zeros(row: usize, col: usize) -> Self {
-        let storage = vec![Dtype::from(0); row * col];
+    pub fn ones(shape: (usize, usize)) -> Self {
+        let storage = vec![Dtype::from(1); shape.0 * shape.1];
         Tensor {
-            shape: (row, col),
+            shape,
             storage,
             _storage: PhantomData,
+            #[cfg(feature = "retain_gradients")]
+            gradients: None,
         }
     }
 
-    pub fn rand_f32(row: usize, col: usize) -> Tensor<f32> {
+    pub fn zeros(shape: (usize, usize)) -> Self {
+        let storage = vec![Dtype::from(0); shape.0 * shape.1];
+        Tensor {
+            shape,
+            storage,
+            _storage: PhantomData,
+            #[cfg(feature = "retain_gradients")]
+            gradients: None,
+        }
+    }
+
+    pub fn rand_f32(shape: (usize, usize)) -> Tensor<f32> {
         let mut rng = rand::thread_rng();
-        let storage = (0..row * col).map(|_| rng.gen::<f32>()).collect();
+        let storage: Vec<f32> = (0..shape.0 * shape.1).map(|_| rng.gen::<f32>()).collect();
 
         Tensor {
-            shape: (row, col),
+            shape,
             storage,
             _storage: PhantomData,
+            #[cfg(feature = "retain_gradients")]
+            gradients: None,
         }
     }
-    pub fn rand_f64(row: usize, col: usize) -> Tensor<f64> {
+
+    pub fn retain_grad(&self) -> bool {
+        cfg!(feature = "retain_gradients")
+    }
+
+    ///
+    /// Example:
+    /// ```
+    /// let shape : (usize, usize) = (1, 5);
+    /// let t = Tensor::<f64>::rand_f64(shape);
+    /// ```
+    pub fn rand_f64(shape: (usize, usize)) -> Tensor<f64> {
         let mut rng = rand::thread_rng();
-        let storage = (0..row * col).map(|_| rng.gen::<f64>()).collect();
+        let storage: Vec<f64> = (0..shape.0 * shape.1).map(|_| rng.gen::<f64>()).collect();
 
         Tensor {
-            shape: (row, col),
+            shape,
             storage,
             _storage: PhantomData,
+            #[cfg(feature = "retain_gradients")]
+            gradients: None,
         }
     }
+
+    // Implement this
+    // pub fn mul_(&self, y: Tensor<Dtype>) {}
+    // pub fn add_(&self, y: Tensor<Dtype>) {}
+    // pub fn sub_(&self, y: Tensor<Dtype>) {}
+    // pub fn div_(&self, y: Tensor<Dtype>) {}
 }
 
 // Seen these implemented but don't exactly know what there used for
@@ -108,20 +202,49 @@ where
 
 #[cfg(test)]
 mod test {
-
-    use super::{Tensor, TensorTrait};
+    use super::{IntoTensor, Tensor, TensorError};
 
     #[test]
-    fn vec_to_tensor() {
-        let vec1 = vec![0; 10];
-        let vec2 = vec![0; 10];
-        let tensor1 = vec1.to_tensor(2, 5);
-        let tensor2 = Tensor::new(2, 5, vec2);
-        assert_eq!(tensor1, tensor2);
+    fn vec_to_tensor_success() {
+        let vec = vec![1, 2, 3, 4, 5, 6];
+        let tensor: Tensor<i32> = vec.to_tensor(2, 3).unwrap();
+        assert_eq!(tensor.shape, (2, 3));
+        assert_eq!(tensor.storage, vec![1, 2, 3, 4, 5, 6]);
     }
 
-    fn rng_test() {
-        let _tensor: Tensor<f32> = Tensor::<f32>::rand_f32(10usize, 10usize);
-        println!("{:?}", _tensor);
+    #[test]
+    fn vec_to_tensor_invalid_shape() {
+        let vec = vec![1, 2, 3, 4, 5];
+        let result = vec.to_tensor(2, 3);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err(),
+            TensorError::InvalidShape {
+                expected: (2, 3),
+                found: (5, 1)
+            }
+        );
+    }
+
+    #[test]
+    fn tensor_rand_shape() {
+        let shape: (usize, usize) = (10, 10);
+        let tensor = Tensor::<f32>::rand_f32(shape);
+        assert_eq!(tensor.shape, shape);
+    }
+
+    #[test]
+    fn tensor_equality() {
+        let tensor1 = Tensor::new((2, 2), vec![1, 2, 3, 4]).unwrap();
+        let tensor2 = Tensor::new((2, 2), vec![1, 2, 3, 4]).unwrap();
+        let tensor3 = Tensor::new((2, 2), vec![4, 3, 2, 1]).unwrap();
+        assert_eq!(tensor1, tensor2);
+        assert_ne!(tensor1, tensor3);
+    }
+
+    #[test]
+    fn test_retain_grad() {
+        let tensor = Tensor::new((2, 2), vec![1, 2, 3, 4]).unwrap();
+        assert_eq!(cfg!(feature = "retain_gradients"), tensor.retain_grad())
     }
 }
